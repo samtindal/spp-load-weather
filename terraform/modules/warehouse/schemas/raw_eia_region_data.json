@@ -1,0 +1,12 @@
+[
+  {"name": "period", "type": "STRING", "mode": "REQUIRED", "description": "EIA hourly period, UTC, hour-ending, YYYY-MM-DDTHH"},
+  {"name": "respondent", "type": "STRING", "mode": "REQUIRED", "description": "EIA balancing authority code (SWPP)"},
+  {"name": "respondent_name", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "type", "type": "STRING", "mode": "REQUIRED", "description": "D = demand, DF = day-ahead demand forecast"},
+  {"name": "type_name", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "value", "type": "STRING", "mode": "NULLABLE", "description": "As received; typed in staging"},
+  {"name": "value_units", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "ingested_at", "type": "TIMESTAMP", "mode": "REQUIRED"},
+  {"name": "ingest_date", "type": "DATE", "mode": "REQUIRED", "description": "Partition column"},
+  {"name": "source_uri", "type": "STRING", "mode": "REQUIRED", "description": "Landing file this row was loaded from"}
+]

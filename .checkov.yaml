@@ -1,0 +1,22 @@
+# Checks skipped on purpose. Every other checkov finding fails CI.
+# Reasoning in full: docs/decisions.md, "Security scanner exceptions".
+framework:
+  - terraform
+skip-check:
+  # Customer-managed encryption keys (CMEK). Everything stored here is a copy
+  # of public data (EIA, NOAA), already encrypted at rest with Google-managed
+  # keys. Cloud KMS keys bill monthly per key version, which would break the
+  # project's $0 target for no security gain.
+  - CKV_GCP_80  # BigQuery tables
+  - CKV_GCP_81  # BigQuery datasets
+  - CKV_GCP_84  # Artifact Registry
+  # BigQuery table deletion protection. Off by design so `terraform destroy`
+  # leaves nothing billable; every table is rebuilt by `make backfill`.
+  - CKV_GCP_121
+  # Bucket access logging. Needs a second log bucket and generates billable
+  # log volume. Both buckets are private (public access prevention enforced,
+  # uniform bucket-level access), and Cloud Audit Logs record admin activity.
+  - CKV_GCP_62
+  # Versioning on the landing bucket. Its files are transient copies of an
+  # API response, deleted after 30 days; the state bucket IS versioned.
+  - CKV_GCP_78

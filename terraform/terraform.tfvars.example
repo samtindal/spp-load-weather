@@ -1,0 +1,15 @@
+# Copy to terraform.tfvars (gitignored) and fill in.
+# The EIA API key is NOT set here: export TF_VAR_eia_api_key in your shell.
+
+project_id         = "your-project-id"
+billing_account_id = "XXXXXX-XXXXXX-XXXXXX"
+alert_email        = "you@example.com"
+
+# region                  = "us-central1"
+# monthly_budget_usd      = 5
+# query_quota_mib_per_day = 20480
+
+# Phase 2
+# enable_ingestion = true
+# enable_schedules = true
+# ingestion_image  = "us-central1-docker.pkg.dev/your-project-id/spp-load-weather/ingest:<git-sha>"
