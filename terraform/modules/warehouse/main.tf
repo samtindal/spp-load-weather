@@ -8,6 +8,10 @@ locals {
     staging = "Typed, deduplicated, time-zone-resolved load and weather."
     mart    = "Analysis-ready views and BigQuery ML models."
   }
+
+  # The sandbox forces a 60-day expiration on every table and partition.
+  # Declaring it keeps Terraform's view of the datasets matching reality.
+  sandbox_expiration_ms = 60 * 24 * 60 * 60 * 1000
 }
 
 # One dataset per layer so IAM can differ per layer: the ingestion job can
@@ -18,6 +22,9 @@ resource "google_bigquery_dataset" "layer" {
   dataset_id  = each.key
   location    = var.location
   description = each.value
+
+  default_table_expiration_ms     = var.sandbox ? local.sandbox_expiration_ms : null
+  default_partition_expiration_ms = var.sandbox ? local.sandbox_expiration_ms : null
 
   # Every layer is reproducible from the sources (EIA API, NOAA public data)
   # by re-running the backfill, so `terraform destroy` removes the data too
@@ -35,6 +42,9 @@ resource "google_bigquery_table" "raw_eia_region_data" {
 
   schema = file("${path.module}/schemas/raw_eia_region_data.json")
 
+  # Partitioned by ingest date, not by the hour the data describes: every
+  # partition is recent, so the sandbox's 60-day partition expiry can't
+  # silently drop history that a table-level expiry wouldn't.
   time_partitioning {
     type  = "DAY"
     field = "ingest_date"
@@ -43,9 +53,20 @@ resource "google_bigquery_table" "raw_eia_region_data" {
   # partition filter means no query can accidentally scan all of it.
   require_partition_filter = true
   clustering               = ["respondent", "type"]
+
+  lifecycle {
+    ignore_changes = [expiration_time] # set by the sandbox's dataset default
+  }
 }
 
 # --- staging --------------------------------------------------------------------
+#
+# Terraform owns these tables' existence, location, and IAM. The pipeline owns
+# their contents and exact column shape: each rebuild is a query written with
+# WRITE_TRUNCATE, which replaces the schema along with the rows. Hence
+# ignore_changes on schema, and no partitioning: a few MB per table gains
+# nothing from it (every query bills a 10 MB minimum), and partitions keyed
+# on historical dates would be expired on arrival in the sandbox.
 
 resource "google_bigquery_table" "load_hourly" {
   dataset_id          = google_bigquery_dataset.layer["staging"].dataset_id
@@ -54,23 +75,19 @@ resource "google_bigquery_table" "load_hourly" {
   deletion_protection = false
 
   schema = jsonencode([
-    { name = "interval_start_utc", type = "TIMESTAMP", mode = "REQUIRED" },
-    { name = "interval_end_utc", type = "TIMESTAMP", mode = "REQUIRED", description = "EIA's period (hour-ending)" },
-    { name = "local_date", type = "DATE", mode = "REQUIRED", description = "America/Chicago date of the interval start" },
-    { name = "local_hour", type = "INT64", mode = "REQUIRED" },
-    { name = "respondent", type = "STRING", mode = "REQUIRED" },
-    { name = "series", type = "STRING", mode = "REQUIRED", description = "D or DF" },
-    { name = "mw", type = "FLOAT64", mode = "REQUIRED", description = "MWh over the hour = average MW" },
-    { name = "ingested_at", type = "TIMESTAMP", mode = "REQUIRED" },
+    { name = "interval_start_utc", type = "TIMESTAMP" },
+    { name = "interval_end_utc", type = "TIMESTAMP", description = "EIA's period (hour-ending)" },
+    { name = "local_date", type = "DATE", description = "America/Chicago date of the interval start" },
+    { name = "local_hour", type = "INT64" },
+    { name = "respondent", type = "STRING" },
+    { name = "series", type = "STRING", description = "D or DF" },
+    { name = "mw", type = "FLOAT64", description = "MWh over the hour = average MW" },
+    { name = "ingested_at", type = "TIMESTAMP" },
   ])
 
-  # ~17.5k rows a year per series. Monthly partitions keep partition count
-  # sane at this size; clustering orders rows for the series filter.
-  time_partitioning {
-    type  = "MONTH"
-    field = "interval_start_utc"
+  lifecycle {
+    ignore_changes = [schema, expiration_time]
   }
-  clustering = ["respondent", "series"]
 }
 
 resource "google_bigquery_table" "weather_stations" {
@@ -80,17 +97,21 @@ resource "google_bigquery_table" "weather_stations" {
   deletion_protection = false
 
   schema = jsonencode([
-    { name = "usaf", type = "STRING", mode = "REQUIRED" },
-    { name = "wban", type = "STRING", mode = "REQUIRED" },
-    { name = "name", type = "STRING", mode = "NULLABLE" },
-    { name = "lat", type = "FLOAT64", mode = "NULLABLE" },
-    { name = "lon", type = "FLOAT64", mode = "NULLABLE" },
-    { name = "days_observed", type = "INT64", mode = "REQUIRED" },
-    { name = "days_in_window", type = "INT64", mode = "REQUIRED" },
-    { name = "completeness", type = "FLOAT64", mode = "REQUIRED" },
-    { name = "station_rank", type = "INT64", mode = "REQUIRED" },
-    { name = "selected_at", type = "TIMESTAMP", mode = "REQUIRED" },
+    { name = "usaf", type = "STRING" },
+    { name = "wban", type = "STRING" },
+    { name = "name", type = "STRING" },
+    { name = "lat", type = "FLOAT64" },
+    { name = "lon", type = "FLOAT64" },
+    { name = "days_observed", type = "INT64" },
+    { name = "days_in_window", type = "INT64" },
+    { name = "completeness", type = "FLOAT64" },
+    { name = "station_rank", type = "INT64" },
+    { name = "selected_at", type = "TIMESTAMP" },
   ])
+
+  lifecycle {
+    ignore_changes = [schema, expiration_time]
+  }
 }
 
 resource "google_bigquery_table" "weather_daily" {
@@ -99,16 +120,18 @@ resource "google_bigquery_table" "weather_daily" {
   description         = "Daily temperature averaged across the station panel. GSOD is daily; this is its native grain."
   deletion_protection = false
 
-  # ~365 rows a year. Unpartitioned on purpose: partitions this small add
-  # metadata overhead and save nothing (every query bills a 10 MB minimum).
   schema = jsonencode([
-    { name = "obs_date", type = "DATE", mode = "REQUIRED" },
-    { name = "n_stations", type = "INT64", mode = "REQUIRED" },
-    { name = "tavg_f", type = "FLOAT64", mode = "REQUIRED" },
-    { name = "tmax_f", type = "FLOAT64", mode = "NULLABLE" },
-    { name = "tmin_f", type = "FLOAT64", mode = "NULLABLE" },
-    { name = "updated_at", type = "TIMESTAMP", mode = "REQUIRED" },
+    { name = "obs_date", type = "DATE" },
+    { name = "n_stations", type = "INT64" },
+    { name = "tavg_f", type = "FLOAT64" },
+    { name = "tmax_f", type = "FLOAT64" },
+    { name = "tmin_f", type = "FLOAT64" },
+    { name = "updated_at", type = "TIMESTAMP" },
   ])
+
+  lifecycle {
+    ignore_changes = [schema, expiration_time]
+  }
 }
 
 # --- mart (views) --------------------------------------------------------------
@@ -124,6 +147,10 @@ resource "google_bigquery_table" "load_weather_daily" {
     use_legacy_sql = false
   }
 
+  lifecycle {
+    ignore_changes = [expiration_time]
+  }
+
   depends_on = [google_bigquery_table.load_hourly, google_bigquery_table.weather_daily]
 }
 
@@ -136,6 +163,10 @@ resource "google_bigquery_table" "load_weather_hourly" {
   view {
     query          = templatefile("${var.sql_dir}/mart_load_weather_hourly.sql", { project = var.project_id })
     use_legacy_sql = false
+  }
+
+  lifecycle {
+    ignore_changes = [expiration_time]
   }
 
   depends_on = [google_bigquery_table.load_hourly, google_bigquery_table.weather_daily]

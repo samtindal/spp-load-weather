@@ -1,5 +1,6 @@
 locals {
-  warehouse_apis = [
+  # In the sandbox only BigQuery is available; everything else needs billing.
+  warehouse_apis = var.sandbox ? ["bigquery.googleapis.com"] : [
     "bigquery.googleapis.com",
     "bigquerydatatransfer.googleapis.com", # scheduled queries
     "billingbudgets.googleapis.com",
@@ -28,6 +29,8 @@ resource "google_project_service" "apis" {
 # The Data Transfer Service agent only exists after something asks for it.
 # Creating it explicitly lets the warehouse grant it a role on first apply.
 resource "google_project_service_identity" "bq_data_transfer" {
+  count = var.sandbox ? 0 : 1
+
   provider   = google-beta
   service    = "bigquerydatatransfer.googleapis.com"
   depends_on = [google_project_service.apis]
@@ -39,14 +42,19 @@ module "warehouse" {
   project_id                = var.project_id
   location                  = var.bq_location
   sql_dir                   = local.sql_dir
+  sandbox                   = var.sandbox
+  study_start_year          = var.study_start_year
   enable_schedules          = var.enable_schedules
-  data_transfer_agent_email = google_project_service_identity.bq_data_transfer.email
+  data_transfer_agent_email = var.sandbox ? null : google_project_service_identity.bq_data_transfer[0].email
 
   depends_on = [google_project_service.apis]
 }
 
+# Budgets and quota overrides hang off a billing account. The sandbox has
+# none, and can't be billed in the first place.
 module "governance" {
   source = "./modules/governance"
+  count  = var.sandbox ? 0 : 1
 
   project_id              = var.project_id
   billing_account_id      = var.billing_account_id

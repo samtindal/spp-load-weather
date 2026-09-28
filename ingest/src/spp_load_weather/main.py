@@ -2,15 +2,15 @@
 
     spp-load-weather ingest --start 2021-01-01 --end 2025-12-31 --dest data/ --table P.raw.eia_region_data
     spp-load-weather ingest --dest gs://BUCKET --table P.raw.eia_region_data      # last 3 days
-    spp-load-weather run-sql sql/staging_load_hourly.sql --project P --var since="DATE '2021-01-01'"
+    spp-load-weather run-sql sql/staging_load_hourly.sql --project P --destination P.staging.load_hourly
 
 Failure safety: every page is fetched and the row count checked before
 anything is written, and the write is a single BigQuery load job, which is
 atomic. A failed EIA call therefore leaves the table exactly as it was.
 
 Idempotency: raw is an append-only landing table (a re-run lands the same
-rows again, tagged with a later `ingested_at`). The staging MERGE keeps only
-the latest copy of each (period, type), so re-running a window never
+rows again, tagged with a later `ingested_at`). The staging rebuild keeps
+only the latest copy of each (period, type), so re-running a window never
 duplicates a row downstream.
 
 Cost: BigQuery batch load jobs are free; streaming inserts are not. That is
@@ -33,7 +33,7 @@ from spp_load_weather.records import to_ndjson, to_raw_record
 log = logging.getLogger("spp_load_weather")
 
 DEFAULT_TYPES = ("D", "DF")  # demand, and EIA's own day-ahead demand forecast
-DEFAULT_MAX_BYTES = 1 * 2**30  # 1 GiB per query; the project also has a daily quota
+DEFAULT_MAX_BYTES = 4 * 2**30  # 4 GiB per query: the GSOD weather rebuild reads a few GiB of columns
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -57,6 +57,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     run_sql.add_argument("--project", required=True)
     run_sql.add_argument("--var", action="append", default=[], metavar="NAME=VALUE")
     run_sql.add_argument("--max-bytes-billed", type=int, default=DEFAULT_MAX_BYTES)
+    run_sql.add_argument("--destination", help="project.dataset.table to overwrite with the result")
 
     return parser.parse_args(argv)
 
@@ -153,7 +154,12 @@ def main(argv: list[str] | None = None) -> None:
         ingest(args)
     elif args.command == "run-sql":
         variables = {"project": args.project} | dict(v.split("=", 1) for v in args.var)
-        sql.run(sql.render(args.path, **variables), project=args.project, max_bytes_billed=args.max_bytes_billed)
+        sql.run(
+            sql.render(args.path, **variables),
+            project=args.project,
+            max_bytes_billed=args.max_bytes_billed,
+            destination=args.destination,
+        )
 
 
 if __name__ == "__main__":

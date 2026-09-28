@@ -1,7 +1,8 @@
 # spp-load-weather
 #
-#   make bootstrap   one-time: state bucket (local state)
-#   make init        point the main stack at that bucket
+#   make init-sandbox   BigQuery sandbox (no billing): local state, warehouse only
+#   make bootstrap   one-time, billing mode: state bucket (local state)
+#   make init        billing mode: point the main stack at that bucket
 #   make plan / apply / destroy
 #   make backfill    load five years of SPP load + weather (Phase 1)
 #   make notebook    open the analysis
@@ -24,7 +25,7 @@ RUN := cd ingest && uv run spp-load-weather
 IMAGE_TAG ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 IMAGE      = $(REGION)-docker.pkg.dev/$(PROJECT)/spp-load-weather/ingest:$(IMAGE_TAG)
 
-.PHONY: help bootstrap init plan apply destroy backfill backfill-load backfill-weather notebook notebook-run \
+.PHONY: help bootstrap init init-sandbox plan apply destroy backfill backfill-load backfill-weather notebook notebook-run \
         image deploy fmt lint test check require-project
 
 help:
@@ -40,7 +41,15 @@ bootstrap: require-project
 	terraform -chdir=terraform/bootstrap apply -var project_id=$(PROJECT) -var region=$(REGION)
 
 init: require-project
-	$(TF) init -input=false -backend-config=bucket=$(PROJECT)-tfstate
+	rm -f terraform/backend_override.tf
+	$(TF) init -input=false -reconfigure -backend-config=bucket=$(PROJECT)-tfstate
+
+# The sandbox can't create a Cloud Storage bucket, so state stays local.
+# Terraform's override-file mechanism swaps the gcs backend for local
+# without editing committed config; the override file is gitignored.
+init-sandbox:
+	printf 'terraform {\n  backend "local" {}\n}\n' > terraform/backend_override.tf
+	$(TF) init -input=false -reconfigure
 
 plan:
 	$(TF) plan -out=tfplan
@@ -53,20 +62,23 @@ destroy:
 
 # --- Phase 1 data load ---------------------------------------------------------------
 # The same package and SQL the Phase 2 schedule runs, with a fixed window.
-# Every SQL step runs with maximum_bytes_billed (default 1 GiB).
+# Every SQL step runs with maximum_bytes_billed (default 4 GiB) and overwrites its
+# staging table (WRITE_TRUNCATE), so re-running is always safe.
 
 backfill: backfill-load backfill-weather
 
 backfill-load: require-project
 	@test -n "$$EIA_API_KEY" || { echo "export EIA_API_KEY first (free key: eia.gov/opendata)"; exit 1; }
 	$(RUN) ingest --start $(START) --end $(END) --dest ../data --table $(PROJECT).raw.eia_region_data
-	$(RUN) run-sql ../sql/staging_load_hourly.sql --project $(PROJECT) --var "since=DATE '1970-01-01'"
+	$(RUN) run-sql ../sql/staging_load_hourly.sql --project $(PROJECT) --destination $(PROJECT).staging.load_hourly
 
 backfill-weather: require-project
 	$(RUN) run-sql ../sql/staging_weather_stations.sql --project $(PROJECT) \
+	  --destination $(PROJECT).staging.weather_stations \
 	  --var start_year=$(START_YEAR) --var end_year=$(END_YEAR) --var n_stations=$(N_STATIONS)
 	$(RUN) run-sql ../sql/staging_weather_daily.sql --project $(PROJECT) \
-	  --var "start_date=DATE '$(START)'" --var "end_date=DATE '$(END)'"
+	  --destination $(PROJECT).staging.weather_daily \
+	  --var start_year=$(START_YEAR) --var end_year=$(END_YEAR)
 
 # --- Analysis ---------------------------------------------------------------------------
 

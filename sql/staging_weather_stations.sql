@@ -1,4 +1,5 @@
 -- Pick the weather stations, by rule rather than by hand.
+-- -> staging.weather_stations (written with WRITE_TRUNCATE)
 --
 -- Oklahoma stations from NOAA's station list, ranked by how many days in the
 -- study window they actually reported a mean temperature. The top N become
@@ -7,14 +8,10 @@
 -- analysis.
 --
 -- Cost: the _TABLE_SUFFIX range is a constant, so BigQuery scans only the
--- study-window year tables, and only the five columns named here.
+-- study-window year tables, and only the columns named here.
 --
 -- Vars: project, start_year, end_year, n_stations.
 
-TRUNCATE TABLE `${project}.staging.weather_stations`;
-
-INSERT INTO `${project}.staging.weather_stations`
-  (usaf, wban, name, lat, lon, days_observed, days_in_window, completeness, station_rank, selected_at)
 WITH
 window_days AS (
   SELECT DATE_DIFF(LEAST(DATE '${end_year}-12-31', CURRENT_DATE()), DATE '${start_year}-01-01', DAY) + 1 AS n
@@ -45,4 +42,4 @@ SELECT
 FROM candidates AS c
 JOIN observed AS o ON o.stn = c.usaf AND o.wban = c.wban
 CROSS JOIN window_days AS w
-QUALIFY station_rank <= ${n_stations};
+QUALIFY station_rank <= ${n_stations}

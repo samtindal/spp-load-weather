@@ -1,15 +1,21 @@
 # Copy to terraform.tfvars (gitignored) and fill in.
-# The EIA API key is NOT set here: export TF_VAR_eia_api_key in your shell.
 
-project_id         = "your-project-id"
-billing_account_id = "XXXXXX-XXXXXX-XXXXXX"
-alert_email        = "you@example.com"
+project_id = "your-project-id"
 
-# region                  = "us-central1"
+# --- Option A: BigQuery sandbox (no billing account, no card, $0) -----------
+# Provisions the warehouse only. Use `make init-sandbox`.
+sandbox = true
+
+# --- Option B: billing enabled ----------------------------------------------
+# Adds the budget, the daily BigQuery quota, scheduled queries and (Phase 2)
+# ingestion. Use `make bootstrap init`.
+# sandbox            = false
+# billing_account_id = "XXXXXX-XXXXXX-XXXXXX"
+# alert_email        = "you@example.com"
 # monthly_budget_usd      = 5
 # query_quota_mib_per_day = 20480
 
-# Phase 2
+# Phase 2 (billing only). The EIA key is NOT set here: export TF_VAR_eia_api_key.
 # enable_ingestion = true
 # enable_schedules = true
 # ingestion_image  = "us-central1-docker.pkg.dev/your-project-id/spp-load-weather/ingest:<git-sha>"

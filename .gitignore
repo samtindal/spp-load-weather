@@ -5,6 +5,7 @@
 *.tfplan
 terraform.tfvars
 crash.log
+*_override.tf
 
 # Python
 .venv

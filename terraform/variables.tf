@@ -9,6 +9,24 @@ variable "region" {
   description = "Region for Cloud Run, Scheduler, Artifact Registry, and the landing bucket."
 }
 
+variable "sandbox" {
+  type        = bool
+  default     = false
+  description = <<-EOT
+    Run in the BigQuery sandbox: no billing account, no credit card, $0 by
+    construction. Provisions only the warehouse (datasets, tables, views, IAM).
+    Everything that needs billing (budget, quota override, scheduled queries,
+    the Phase 2 ingestion stack) is skipped, and datasets use the sandbox's
+    mandatory 60-day expiration.
+  EOT
+}
+
+variable "study_start_year" {
+  type        = number
+  default     = 2021
+  description = "First year of the study window. The scheduled weather rebuild never scans GSOD tables before it."
+}
+
 variable "bq_location" {
   type        = string
   default     = "US"
@@ -24,12 +42,24 @@ variable "bq_location" {
 
 variable "billing_account_id" {
   type        = string
-  description = "Billing account ID (XXXXXX-XXXXXX-XXXXXX) for the budget alert."
+  default     = null
+  description = "Billing account ID (XXXXXX-XXXXXX-XXXXXX) for the budget alert. Not used in sandbox mode."
+
+  validation {
+    condition     = var.sandbox || var.billing_account_id != null
+    error_message = "billing_account_id is required unless sandbox = true."
+  }
 }
 
 variable "alert_email" {
   type        = string
-  description = "Where budget alerts go."
+  default     = null
+  description = "Where budget alerts go. Not used in sandbox mode."
+
+  validation {
+    condition     = var.sandbox || var.alert_email != null
+    error_message = "alert_email is required unless sandbox = true."
+  }
 }
 
 variable "monthly_budget_usd" {
@@ -59,6 +89,11 @@ variable "enable_schedules" {
   type        = bool
   default     = false
   description = "Run the scheduled staging queries daily. Off in Phase 1 (the backfill runs the same SQL once); on in Phase 2."
+
+  validation {
+    condition     = !(var.sandbox && var.enable_schedules)
+    error_message = "The BigQuery sandbox has no Data Transfer Service, so scheduled queries need billing (sandbox = false)."
+  }
 }
 
 # --- Ingestion (Phase 2) --------------------------------------------------------
@@ -67,6 +102,11 @@ variable "enable_ingestion" {
   type        = bool
   default     = false
   description = "Provision the Phase 2 stack: landing bucket, Cloud Run Job, Scheduler, Secret Manager, Artifact Registry."
+
+  validation {
+    condition     = !(var.sandbox && var.enable_ingestion)
+    error_message = "Cloud Run, Scheduler, Secret Manager and Artifact Registry all need billing (sandbox = false)."
+  }
 }
 
 variable "ingestion_image" {

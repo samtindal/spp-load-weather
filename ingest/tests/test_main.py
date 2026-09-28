@@ -51,3 +51,27 @@ def test_render_fails_loudly_on_missing_variable(tmp_path):
     f.write_text("SELECT ${missing}")
     with pytest.raises(KeyError):
         render(f)
+
+
+def test_query_config_caps_bytes_and_overwrites_destination():
+    from google.cloud import bigquery
+
+    from spp_load_weather.sql import query_config
+
+    cfg = query_config(max_bytes_billed=123, destination="p.staging.t")
+    assert cfg.maximum_bytes_billed == 123
+    assert cfg.destination.table_id == "t"
+    assert cfg.write_disposition == bigquery.WriteDisposition.WRITE_TRUNCATE
+
+
+def test_query_config_without_destination_is_a_plain_query():
+    from spp_load_weather.sql import query_config
+
+    cfg = query_config(max_bytes_billed=123)
+    assert cfg.destination is None
+    assert cfg.write_disposition is None
+
+
+def test_run_sql_accepts_a_destination():
+    args = parse_args(["run-sql", "x.sql", "--project", "p", "--destination", "p.staging.t"])
+    assert args.destination == "p.staging.t"
