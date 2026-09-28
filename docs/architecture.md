@@ -8,9 +8,9 @@
 | 2 | `spp_load_weather` (local backfill or Cloud Run Job) | same | Pages with `offset`/`length` under a total sort order, retries 429/5xx with backoff, asserts the row count equals the API's `total`. |
 | 3 | NDJSON file (local `data/` or `gs://…-eia-landing`) | same | One file per run, named by window and run time. |
 | 4 | `raw.eia_region_data` | same | Load job, append. Values kept as received (strings). Partitioned by `ingest_date`. |
-| 5 | `staging.load_hourly` | one row per hour per series | MERGE: typed, latest ingest wins, UTC → America/Chicago. |
+| 5 | `staging.load_hourly` | one row per hour per series | Rebuilt (WRITE_TRUNCATE): typed, latest ingest wins, UTC → America/Chicago. |
 | 6 | `staging.weather_stations` | one row per station | Top-N Oklahoma stations by reporting completeness. |
-| 7 | `staging.weather_daily` | one row per day | MERGE from `noaa_gsod.gsod*`, suffix-pruned, averaged across the panel. |
+| 7 | `staging.weather_daily` | one row per day | Rebuilt from `noaa_gsod.gsod*`, suffix-pruned, averaged across the panel. |
 | 8 | `mart.load_weather_daily`, `mart.load_weather_hourly` | day / hour | Views. |
 | 9 | `mart.load_forecast_xreg` | model | BQML `ARIMA_PLUS_XREG`, retrained per backtest origin by the notebook. |
 
@@ -28,8 +28,10 @@
 | Time | What |
 |---|---|
 | 06:00 | Cloud Scheduler → `eia-ingest` job: last 3 days from EIA into raw |
-| 07:00 | Scheduled query: raw → `staging.load_hourly` (re-reads 7 days of raw partitions) |
-| 07:15 | Scheduled query: GSOD → `staging.weather_daily` (re-reads 14 days; GSOD posts late) |
+| 07:00 | Scheduled query: raw → `staging.load_hourly` (full rebuild) |
+| 07:15 | Scheduled query: GSOD → `staging.weather_daily` (full rebuild, study years only) |
+
+In sandbox mode there are no schedules: `make backfill` runs the same SQL on demand.
 
 ## Layout
 

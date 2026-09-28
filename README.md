@@ -4,7 +4,7 @@
 model forecast it a day ahead?** Hourly load for the Southwest Power Pool (SPP, the grid operator for Oklahoma,
 Kansas, Nebraska and ten other states) from the U.S. Energy Information Administration, joined to NOAA weather
 observations and modeled in BigQuery. Every piece of infrastructure is Terraform, and the whole thing runs inside
-Google Cloud's free tier.
+Google Cloud's free tier; the analysis runs in the BigQuery sandbox, with no billing account at all.
 
 ![SPP load vs. temperature](docs/img/load_vs_temp.png)
 
@@ -27,8 +27,8 @@ flowchart TD
     SCHED -->|OAuth, run.invoker| JOB
     SM -.-> JOB
     EIA --> JOB --> GCS -->|free batch load| RAW
-    RAW -->|scheduled MERGE| STG
-    GSOD -->|scheduled MERGE, suffix-pruned| STG
+    RAW -->|rebuild, dedupe| STG
+    GSOD -->|rebuild, suffix-pruned| STG
     STG --> MART --> NB
 ```
 
@@ -48,7 +48,10 @@ materialized views, and more) are in [`docs/decisions.md`](docs/decisions.md).
 
 ## Cost: $0, enforced rather than hoped for
 
-- **A hard daily cap on BigQuery bytes**, set in Terraform: 20 GiB/day, so a month can't exceed the 1 TiB free tier.
+- **The analysis runs in the BigQuery sandbox**, which has no billing account to charge. `sandbox = true` in
+  Terraform provisions just the warehouse and matches the sandbox's rules (no DML, 60-day expiry), so every SQL
+  file here is a plain `SELECT` written to its table, which the sandbox allows.
+- **With billing enabled, a hard daily cap on BigQuery bytes**, set in Terraform: 20 GiB/day, so a month can't exceed the 1 TiB free tier.
   A runaway query fails instead of billing.
 - `maximum_bytes_billed` on every query the pipeline and the notebook run, and bytes printed for each one.
 - `require_partition_filter` on the raw table, and GSOD's per-year tables pruned with a constant `_TABLE_SUFFIX`.
@@ -60,19 +63,26 @@ Details and measured numbers: [`docs/cost.md`](docs/cost.md).
 
 ## Run it
 
-Prerequisites: a GCP project with billing linked, `gcloud` authenticated with application-default credentials,
-Terraform ≥ 1.11, [uv](https://docs.astral.sh/uv/), and a free [EIA API key](https://www.eia.gov/opendata/).
+Prerequisites: `gcloud` authenticated with application-default credentials, Terraform ≥ 1.11,
+[uv](https://docs.astral.sh/uv/), and a free [EIA API key](https://www.eia.gov/opendata/).
+
+**Free, no card** (BigQuery sandbox): create a project at console.cloud.google.com/bigquery, then
 
 ```bash
-cp terraform/terraform.tfvars.example terraform/terraform.tfvars   # fill in project, billing account, email
-make bootstrap        # one time: remote-state bucket
-make init plan apply  # warehouse + governance
+cp terraform/terraform.tfvars.example terraform/terraform.tfvars   # set project_id; sandbox = true
+make init-sandbox plan apply   # datasets, tables, views (local Terraform state)
 export EIA_API_KEY=...
-make backfill         # five years of SPP load + Oklahoma weather, ~90k rows
-make notebook-run     # executes the analysis and saves outputs + the chart
+make backfill                  # five years of SPP load + Oklahoma weather, ~90k rows
+make notebook-run              # runs the analysis, saves outputs + the chart
 ```
 
-Phase 2 (daily automated ingestion):
+Sandbox tables expire after 60 days; `make backfill` rebuilds them in a few minutes. The committed notebook
+keeps its outputs regardless.
+
+**With billing** (adds the budget, the daily query cap, scheduled queries, and Phase 2): set `sandbox = false`
+plus the billing fields, then `make bootstrap init plan apply` and the same backfill.
+
+Phase 2 (daily automated ingestion, billing only):
 
 ```bash
 # in terraform.tfvars: enable_ingestion = true, enable_schedules = true
@@ -95,5 +105,7 @@ make image deploy     # build + push the real image, roll the job onto it
 
 ## Status
 
-- **Phase 1** (warehouse, cost controls, backfill, analysis, CI): code complete.
-- **Phase 2** (scheduled ingestion): code complete behind `enable_ingestion`; off by default.
+- **Phase 1** (warehouse, backfill, analysis, CI): code complete; runs in the BigQuery sandbox.
+- **Phase 2** (scheduled ingestion) and the billing-side cost controls: code complete and validated in CI (fmt,
+  validate, tflint, checkov), behind `sandbox = false` and `enable_ingestion`. Not deployed; they need a billing
+  account.

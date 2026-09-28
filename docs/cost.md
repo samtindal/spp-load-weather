@@ -1,13 +1,14 @@
 # Cost
 
-**Target: $0.00 a month. Measured: _pending first full month_.**
+**Target: $0.00 a month.** Run in the BigQuery sandbox, there is no billing account to charge, so $0 is
+guaranteed rather than targeted. The controls below keep it $0 when the project does have billing.
 
 ## Controls
 
 | Control | Where | What it prevents |
 |---|---|---|
 | Daily query quota, 20,480 MiB/day | `modules/governance` | Any month's query bytes exceeding the free tier. Enforced by BigQuery: queries past the cap fail. |
-| `maximum_bytes_billed` | every backfill SQL step (1 GiB), every notebook query (256 MiB) | One bad query billing more than expected. |
+| `maximum_bytes_billed` | every backfill SQL step (4 GiB), every notebook query (256 MiB) | One bad query billing more than expected. |
 | `require_partition_filter` | `raw.eia_region_data` | Full scans of the only table that grows without bound. |
 | Constant `_TABLE_SUFFIX` range | `sql/staging_weather_*.sql` | Scanning ~95 years of GSOD tables to read one. |
 | Batch load jobs, not streaming inserts | `spp_load_weather.main` | Streaming insert charges. |
@@ -25,7 +26,7 @@ tier, with headroom for one-off work. The real workload is far smaller:
 |---|---|
 | Station selection (once) | _measured on first run_ |
 | Weather backfill (once) | _measured on first run_ |
-| Daily staging MERGEs (Phase 2) | 10 MB minimum per table referenced, a few tables per day |
+| Daily staging rebuilds (Phase 2) | load: ~10 MB; weather: same as the weather backfill, daily |
 | Notebook, top to bottom | printed in its final cell |
 
 At this data size, nearly every query bills BigQuery's 10 MB-per-table minimum. Partitioning and clustering
