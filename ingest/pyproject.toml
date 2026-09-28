@@ -1,0 +1,52 @@
+[project]
+name = "spp-load-weather"
+version = "0.1.0"
+description = "Ingest Southwest Power Pool hourly load from EIA API v2 into BigQuery."
+requires-python = ">=3.12"
+license = "MIT"
+dependencies = [
+    "requests>=2.34,<3",
+    "google-cloud-bigquery>=3.45,<4",
+    "google-cloud-storage>=3.15,<4",
+]
+
+[project.scripts]
+spp-load-weather = "spp_load_weather.main:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1,<10",
+    "ruff>=0.16,<0.17",
+]
+notebook = [
+    "google-cloud-bigquery[pandas]>=3.45,<4",
+    "db-dtypes>=1.7,<2",
+    "pandas>=3.0,<4",
+    "matplotlib>=3.11,<4",
+    "statsmodels>=0.15,<0.16",
+    "jupyterlab>=4.6,<5",
+    "ipykernel>=7.3,<8",
+    "nbconvert>=7.17,<8",
+]
+
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/spp_load_weather"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "SIM"]
+ignore = ["S101", "SIM108"]  # pytest asserts; if/else reads better than long ternaries
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S105", "S106"]  # fake API keys in tests

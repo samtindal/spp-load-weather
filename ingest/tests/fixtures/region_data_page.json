@@ -1,0 +1,59 @@
+{
+  "response": {
+    "total": "4",
+    "dateFormat": "YYYY-MM-DD\"T\"HH24",
+    "frequency": "hourly",
+    "data": [
+      {
+        "period": "2024-07-15T20",
+        "respondent": "SWPP",
+        "respondent-name": "Southwest Power Pool",
+        "type": "D",
+        "type-name": "Demand",
+        "value": "51234",
+        "value-units": "megawatthours"
+      },
+      {
+        "period": "2024-07-15T20",
+        "respondent": "SWPP",
+        "respondent-name": "Southwest Power Pool",
+        "type": "DF",
+        "type-name": "Day-ahead demand forecast",
+        "value": 50880,
+        "value-units": "megawatthours"
+      },
+      {
+        "period": "2024-07-15T21",
+        "respondent": "SWPP",
+        "respondent-name": "Southwest Power Pool",
+        "type": "D",
+        "type-name": "Demand",
+        "value": null,
+        "value-units": "megawatthours"
+      },
+      {
+        "period": "2024-07-15T21",
+        "respondent": "SWPP",
+        "respondent-name": "Southwest Power Pool",
+        "type": "DF",
+        "type-name": "Day-ahead demand forecast",
+        "value": "51502",
+        "value-units": "megawatthours"
+      }
+    ],
+    "description": "Hourly demand, day-ahead demand forecast, net generation, and interchange by balancing authority."
+  },
+  "request": {
+    "command": "/v2/electricity/rto/region-data/data/",
+    "params": {
+      "frequency": "hourly",
+      "data": ["value"],
+      "facets": {"respondent": ["SWPP"], "type": ["D", "DF"]},
+      "start": "2024-07-15T20",
+      "end": "2024-07-15T21",
+      "offset": 0,
+      "length": 5000
+    }
+  },
+  "apiVersion": "2.1.8"
+}
