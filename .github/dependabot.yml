@@ -1,0 +1,17 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+  - package-ecosystem: uv
+    directory: /ingest
+    schedule:
+      interval: monthly
+    # Let new releases bake for a week before proposing them.
+    cooldown:
+      default-days: 7
+  - package-ecosystem: terraform
+    directories: [/terraform, /terraform/bootstrap]
+    schedule:
+      interval: monthly

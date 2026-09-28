@@ -1,0 +1,80 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# No cloud credentials anywhere in this workflow, and no `terraform apply`.
+# Everything here runs offline against the code.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+
+      - name: fmt
+        run: terraform fmt -check -recursive terraform
+
+      - name: validate (stack)
+        run: |
+          terraform -chdir=terraform init -backend=false -input=false
+          terraform -chdir=terraform validate
+
+      - name: validate (bootstrap)
+        run: |
+          terraform -chdir=terraform/bootstrap init -backend=false -input=false
+          terraform -chdir=terraform/bootstrap validate
+
+      - uses: terraform-linters/setup-tflint@1cf010d3c7aef302051ccdb68c14c5dc2efa34ef # v6.3.1
+        with:
+          tflint_version: v0.64.0
+      - name: tflint
+        working-directory: terraform
+        env:
+          GITHUB_TOKEN: ${{ github.token }} # avoids rate limits downloading the google ruleset
+        run: |
+          tflint --init
+          tflint --recursive --config "$PWD/.tflint.hcl" --format compact
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: checkov
+        uses: bridgecrewio/checkov-action@99bb2caf247dfd9f03cf984373bc6043d4e32ebf # v12.1347.0
+        with:
+          directory: terraform
+          config_file: .checkov.yaml
+          quiet: true
+          compact: true
+
+  python:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ingest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: "3.12"
+      - name: install (locked)
+        run: uv sync --frozen
+      - name: ruff
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+      - name: pytest (recorded fixtures, no network)
+        run: uv run pytest -q
