@@ -18,3 +18,5 @@ updates:
     directories: [/terraform, /terraform/bootstrap]
     schedule:
       interval: monthly
+    cooldown:
+      default-days: 7
