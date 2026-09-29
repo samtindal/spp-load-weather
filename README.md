@@ -101,6 +101,9 @@ make image deploy     # build + push the real image, roll the job onto it
   population-weighted average across the footprint.
 - **The backtest gives the model the observed temperature**, which is a perfect weather forecast. Its comparison
   with EIA's published forecast flatters it; that's stated next to the numbers too.
+- **Weather ends 2025-08-28.** The BigQuery public copy of NOAA GSOD stopped updating then (there is no
+  `gsod2026` table as of September 2026), so the analysis window is 2021-01-01 to 2025-08-28, about 1,700 days.
+  Load data runs to the present. A live Phase 2 would need weather straight from NOAA.
 - **One balancing authority.** EIA revisions older than the ingestion lookback (3 days) are not re-fetched.
 
 ## Status

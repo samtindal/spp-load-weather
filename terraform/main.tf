@@ -1,6 +1,8 @@
 locals {
-  # In the sandbox only BigQuery is available; everything else needs billing.
-  warehouse_apis = var.sandbox ? ["bigquery.googleapis.com"] : [
+  # Sandbox projects come with BigQuery already enabled, and can't use the
+  # Cloud Resource Manager API that reading a google_project_service back
+  # requires. So in the sandbox, Terraform doesn't manage APIs at all.
+  warehouse_apis = var.sandbox ? [] : [
     "bigquery.googleapis.com",
     "bigquerydatatransfer.googleapis.com", # scheduled queries
     "billingbudgets.googleapis.com",

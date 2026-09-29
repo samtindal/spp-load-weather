@@ -24,8 +24,9 @@ tier, with headroom for one-off work. The real workload is far smaller:
 
 | Workload | Approx. bytes |
 |---|---|
-| Station selection (once) | _measured on first run_ |
-| Weather backfill (once) | _measured on first run_ |
+| EIA load rebuild (raw → staging) | 4.5 MiB processed, 10 MiB billed (the minimum) |
+| Station selection (once) | 655 MiB |
+| Weather backfill (once) | 937 MiB |
 | Daily staging rebuilds (Phase 2) | load: ~10 MB; weather: same as the weather backfill, daily |
 | Notebook, top to bottom | printed in its final cell |
 

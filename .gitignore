@@ -3,6 +3,7 @@
 *.tfstate
 *.tfstate.*
 *.tfplan
+tfplan
 terraform.tfvars
 crash.log
 *_override.tf
