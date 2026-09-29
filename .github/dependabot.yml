@@ -1,14 +1,17 @@
 version: 2
 updates:
+  # Let new releases bake for a week before proposing them: a compromised
+  # release is usually caught and pulled within days.
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
+    cooldown:
+      default-days: 7
   - package-ecosystem: uv
     directory: /ingest
     schedule:
       interval: monthly
-    # Let new releases bake for a week before proposing them.
     cooldown:
       default-days: 7
   - package-ecosystem: terraform
