@@ -46,7 +46,20 @@ both the interval start and end, and derives the local (America/Chicago) date an
 `mart.load_weather_daily.is_complete` compares against the actual number of hours in that local day, and the
 regression uses average MW, not the daily sum, so those days compare fairly.
 
-## 7. Staging is rebuilt, not merged
+## 7. Plausibility bounds in staging
+
+EIA-930 is operator-reported and occasionally wrong. Over 2021–2026 the SPP series contains a demand value of
+3,621,097 MW (2023-06-12 20:00 local, almost certainly a keying error for ~36,211) and a full day of day-ahead
+forecast published at about a tenth of its real level (2026-04-16). Left in, the one bad demand hour pulls the
+temperature model's R² from 0.83 to 0.51.
+
+Staging drops hourly values outside 15,000–80,000 MW. SPP's real demand over the period runs 21–58 GW, so the
+bounds catch only values that can't be physical, and need no tuning. Raw keeps every row as published, and the
+notebook lists what was rejected (25 values), so the cleaning is visible rather than silent. A rolling-median
+outlier test would catch subtler errors, at the price of occasionally rejecting a real extreme; for a grid
+where the extremes are the interesting part, hard physical bounds are the safer rule.
+
+## 8. Staging is rebuilt, not merged
 
 Each staging table is a plain `SELECT` that the runner writes to its table with `WRITE_TRUNCATE`: the backfill
 passes `--destination`, the scheduled queries set `destination_table_name_template`. At this size a rebuild costs
@@ -57,38 +70,38 @@ file in `sql/` contains DML.
 Terraform creates the staging tables and owns their location and IAM; the rebuilds own their exact columns
 (`WRITE_TRUNCATE` replaces the schema), so the tables use `ignore_changes = [schema]`.
 
-## 8. Mart layer as views
+## 9. Mart layer as views
 
 The mart is a few megabytes. A view costs nothing to keep and is always current; a materialized view or a
 scheduled table would add refresh cost and a staleness question for no benefit at this size.
 
-## 9. One SQL file, two runners
+## 10. One SQL file, two runners
 
 Each file in `sql/` uses `${name}` placeholders, a syntax Terraform's `templatefile()` and Python's
 `string.Template` share. Terraform renders them into views and scheduled queries; the backfill renders the same
 files with the study window's years. Both renderers fail on a missing variable, and a test renders every file.
 
-## 10. `_TABLE_SUFFIX` bounded by constants
+## 11. `_TABLE_SUFFIX` bounded by constants
 
 BigQuery only guarantees wildcard-table pruning when `_TABLE_SUFFIX` is compared to a constant, so a filter
 computed at run time (`CURRENT_DATE()`, a subquery) could scan every GSOD year back to 1929. Both bounds are
 literals: the backfill passes its own years, and the scheduled rebuild passes the study start year and `'9999'`.
 The open upper bound picks up each new year's table as NOAA creates it, while staying a constant.
 
-## 11. The API key never enters Terraform state
+## 12. The API key never enters Terraform state
 
 The secret version uses the provider's write-only argument (`secret_data_wo`) fed from an `ephemeral` variable.
 The key reaches Secret Manager but is absent from plan output and from the state file. Rotating it means bumping
 `eia_api_key_version`.
 
-## 12. Deletion is allowed
+## 13. Deletion is allowed
 
 Datasets use `delete_contents_on_destroy = true` and tables have deletion protection off. Every byte in this
 warehouse can be rebuilt from public sources with `make backfill`, and a portfolio project should be able to
 prove that `terraform destroy` leaves nothing billable. For a warehouse holding data that can't be re-derived,
 both would be the other way around.
 
-## 13. BigQuery sandbox as the default way to run it
+## 14. BigQuery sandbox as the default way to run it
 
 The analysis needs no billing account. With `sandbox = true`, Terraform provisions only the warehouse and skips
 everything the sandbox can't do: budgets and quota overrides (no billing account), scheduled queries (no Data
@@ -96,23 +109,23 @@ Transfer Service), and the Phase 2 stack (Cloud Run, Scheduler, Secret Manager a
 billing). Variable validations reject those combinations at plan time. State is local, through a gitignored
 `backend_override.tf`, because the sandbox can't create the state bucket.
 
-Two sandbox rules shaped the schema: no DML (decision 7), and every table and partition expires after 60 days.
+Two sandbox rules shaped the schema: no DML (decision 8), and every table and partition expires after 60 days.
 Partitions are the subtle one: they expire by partition date, so a table partitioned on the hour the data
 describes would lose all but the last 60 days of history on arrival. Raw is partitioned by *ingest* date, which
 is always recent; staging isn't partitioned at all.
 
-## 14. Security scanner exceptions
+## 15. Security scanner exceptions
 
 checkov runs in CI with six documented skips (`.checkov.yaml`). Every other finding fails the build.
 
 | Check | Why skipped |
 |---|---|
 | CKV_GCP_80, 81, 84 (customer-managed keys) | Data is public; Google-managed encryption at rest applies. Cloud KMS bills monthly per key version, which breaks the $0 target for no security gain. |
-| CKV_GCP_121 (table deletion protection) | Decision 12. |
+| CKV_GCP_121 (table deletion protection) | Decision 13. |
 | CKV_GCP_62 (bucket access logs) | Needs a log bucket and billable log volume. Both buckets enforce public access prevention and uniform access; Cloud Audit Logs cover admin activity. |
 | CKV_GCP_78 (landing bucket versioning) | Landing files are transient copies of an API response, deleted after 30 days. The state bucket is versioned. |
 
-## 15. No cloud credentials in CI
+## 16. No cloud credentials in CI
 
 CI runs fmt, validate, tflint, checkov, ruff and pytest, none of which touch GCP, and the tests replay recorded
 API responses. There is no `terraform apply` in CI and no long-lived key in repository secrets. Plan-on-PR could

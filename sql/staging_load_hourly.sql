@@ -9,6 +9,13 @@
 -- costs the same 10 MB minimum as an incremental update, and a plain SELECT
 -- runs in the BigQuery sandbox, which doesn't allow DML.
 --
+-- Validation: hours outside 15,000-80,000 MW are dropped here and kept in
+-- raw. SPP's real load sits between ~21 and ~56 GW (0.1st-99.9th percentile
+-- of 2021-2026: 22-55 GW), so the bounds are wide enough to catch only data
+-- errors, like the 3,621,097 MW keying error EIA reports for 2023-06-12 20:00
+-- local, or the day-ahead forecast published ~10x too low on 2026-04-16.
+-- The notebook lists every rejected row.
+--
 -- Time: EIA-930 hourly periods are UTC and hour-ENDING ("2024-07-15T20" is
 -- 19:00-20:00 UTC). Local calendar fields use the interval start in
 -- America/Chicago, the time zone SPP operates in, so a local day is the 24
@@ -35,6 +42,6 @@ FROM (
   FROM `${project}.raw.eia_region_data`
   -- The raw table requires a partition filter; this one deliberately reads all of it.
   WHERE ingest_date >= DATE '1970-01-01'
-    AND SAFE_CAST(value AS FLOAT64) IS NOT NULL
+    AND SAFE_CAST(value AS FLOAT64) BETWEEN 15000 AND 80000
   QUALIFY ROW_NUMBER() OVER (PARTITION BY respondent, type, period ORDER BY ingested_at DESC) = 1
 )

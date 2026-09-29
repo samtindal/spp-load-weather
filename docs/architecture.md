@@ -8,7 +8,7 @@
 | 2 | `spp_load_weather` (local backfill or Cloud Run Job) | same | Pages with `offset`/`length` under a total sort order, retries 429/5xx with backoff, asserts the row count equals the API's `total`. |
 | 3 | NDJSON file (local `data/` or `gs://…-eia-landing`) | same | One file per run, named by window and run time. |
 | 4 | `raw.eia_region_data` | same | Load job, append. Values kept as received (strings). Partitioned by `ingest_date`. |
-| 5 | `staging.load_hourly` | one row per hour per series | Rebuilt (WRITE_TRUNCATE): typed, latest ingest wins, UTC → America/Chicago. |
+| 5 | `staging.load_hourly` | one row per hour per series | Rebuilt (WRITE_TRUNCATE): typed, validated (15–80 GW), latest ingest wins, UTC → America/Chicago. |
 | 6 | `staging.weather_stations` | one row per station | Top-N Oklahoma stations by reporting completeness. |
 | 7 | `staging.weather_daily` | one row per day | Rebuilt from `noaa_gsod.gsod*`, suffix-pruned, averaged across the panel. |
 | 8 | `mart.load_weather_daily`, `mart.load_weather_hourly` | day / hour | Views. |
