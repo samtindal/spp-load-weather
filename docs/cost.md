@@ -1,6 +1,6 @@
 # Cost
 
-**Target: $0.00 a month.** Run in the BigQuery sandbox, there is no billing account to charge, so $0 is
+**Target: $0.00 a month. Actual so far: $0.00.** Run in the BigQuery sandbox, there is no billing account to charge, so $0 is
 guaranteed rather than targeted. The controls below keep it $0 when the project does have billing.
 
 ## Controls
@@ -28,7 +28,7 @@ tier, with headroom for one-off work. The real workload is far smaller:
 | Station selection (once) | 655 MiB |
 | Weather backfill (once) | 937 MiB |
 | Daily staging rebuilds (Phase 2) | load: ~10 MB; weather: same as the weather backfill, daily |
-| Notebook, top to bottom | printed in its final cell |
+| Notebook, top to bottom (incl. 7 BQML model fits) | 356 MiB processed, 546 MiB billed |
 
 At this data size, nearly every query bills BigQuery's 10 MB-per-table minimum. Partitioning and clustering
 don't change today's bill; they're there so the bill stays flat as the raw table grows.
