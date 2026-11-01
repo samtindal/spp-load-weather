@@ -16,7 +16,7 @@ spp-load-weather = "spp_load_weather.main:main"
 [dependency-groups]
 dev = [
     "pytest>=9.1,<10",
-    "ruff>=0.16,<0.17",
+    "ruff>=0.16,<0.18",
 ]
 notebook = [
     "google-cloud-bigquery[pandas]>=3.45,<4",
